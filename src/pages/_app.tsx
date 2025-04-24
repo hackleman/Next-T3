@@ -4,6 +4,7 @@ import { Geist } from "next/font/google";
 import { api } from "~/utils/api";
 
 import "~/styles/globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -11,9 +12,11 @@ const geist = Geist({
 
 const MyApp: AppType = ({ Component, pageProps }) => {
   return (
-    <div className={geist.className}>
-      <Component {...pageProps} />
-    </div>
+    <ClerkProvider {...pageProps} >
+      <div className={geist.className}>
+        <Component {...pageProps} />
+      </div>
+    </ClerkProvider>
   );
 };
 
