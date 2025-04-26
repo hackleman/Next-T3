@@ -11,4 +11,5 @@
 
 body {
   @apply bg-black text-slate-100;
+  overscroll-behavior: none;
 }
