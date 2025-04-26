@@ -1,19 +1,32 @@
 import type { GetStaticProps, NextPage } from "next";
 import Image from "next/image";
 import Head from "next/head";
-import SuperJSON from "superjson";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { createServerSideHelpers } from '@trpc/react-query/server';
 
 import { api } from "~/utils/api";
-import { appRouter } from "~/server/api/root";
-import { db } from "~/server/db";
 import { PageLayout } from "~/components/layout";
+import { LoadingPage } from "~/components/loader";
+import PostView from "~/components/postview";
+import { generateStaticProps } from "~/server/helpers/ssg";
 
 dayjs.extend(relativeTime);
 
-const pfpSize = 128;
+const ProfileFeed = (props: {userId: string}) => {
+  const { data, isLoading } = api.post.getPostsByUser.useQuery({userId: props.userId});
+
+  if (isLoading) return <LoadingPage />;
+
+  if (!data || data.length === 0) return <div>User has not posted yet.</div>
+
+  return (
+    <div className="flex flex-col">
+      {data.map(userPost => {
+        return (<PostView {...userPost} key={userPost.post.id}/>)
+      })}
+    </div>
+  )
+}
 
 const ProfilePage: NextPage<{username: string}> = ({ username }) => {
   const { data } = api.profile.getUserByUsername.useQuery({ username });
@@ -39,6 +52,7 @@ const ProfilePage: NextPage<{username: string}> = ({ username }) => {
           <div className="h-[192px]"></div>
           <div className="p-6 text-2xl font-bold">{`@${data.username ?? ""}`}</div>
           <div className="border-b border-slate-400 w-full"></div>
+          <ProfileFeed userId={data.id} />
         </div>
       </PageLayout>
     </>
@@ -46,12 +60,7 @@ const ProfilePage: NextPage<{username: string}> = ({ username }) => {
 }
 
 export const getStaticProps: GetStaticProps = async (context) => {
-  const ssg = createServerSideHelpers({
-    router: appRouter,
-    ctx: { db, userId: null },
-    transformer: SuperJSON, // optional - adds superjson serialization
-  });
-
+  const ssg = generateStaticProps();
   const slug = context.params?.slug;
 
   if (typeof slug !== "string") throw new Error("No Slug");

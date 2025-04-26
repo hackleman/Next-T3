@@ -1,27 +1,49 @@
-import { useUser } from "@clerk/nextjs";
 import Head from "next/head";
 import { api } from "~/utils/api";
 
-import type { NextPage } from "next";
+import type { GetStaticProps, NextPage } from "next";
+import { generateStaticProps } from "~/server/helpers/ssg";
+import { PageLayout } from "~/components/layout";
+import PostView from "~/components/postview";
 
-const SinglePostPage: NextPage = () => {
-  const { isLoaded: userLoaded } = useUser();
-  api.post.getAll.useQuery();
+const SinglePostPage: NextPage<{ id: string}> = ({ id }) => {
+  const { data } = api.post.getPostById.useQuery({ id });
 
-  if (!userLoaded) return <></>;
+  if (!data) return <>404</>;
 
   return (
     <>
       <Head>
-        <title>Post</title>
+        <title>{`${data.post.content} - ${data.author.username}`}</title>
       </Head>
-      <main className="flex justify-center h-screen">
-        <div className="w-full h-full flex justify-center">
-            Post View
-        </div>
-      </main>
+      <PageLayout>
+        <PostView {...data} />
+      </PageLayout>
     </>
   );
+}
+
+export const getStaticProps: GetStaticProps = async (context) => {
+  const ssg = generateStaticProps();
+  const id = context.params?.id;
+
+  if (typeof id !== "string") throw new Error("No id");
+
+  await ssg.post.getPostById.prefetch({ id })
+
+  return {
+    props: {
+      trpcState: ssg.dehydrate(),
+      id
+    }
+  }
+}
+
+export const getStaticPaths = () => {
+  return {
+    paths: [],
+    fallback: "blocking"
+  }
 }
 
 export default SinglePostPage;

@@ -5,6 +5,8 @@ import { createTRPCRouter, privateProcedure, publicProcedure } from "~/server/ap
 import { Ratelimit } from "@upstash/ratelimit"; // for deno: see above
 import { Redis } from "@upstash/redis"; // see below for cloudflare and fastly adapters
 import { filterUserForClient } from "~/server/helpers/filters";
+import type { Post } from "@prisma/client";
+import { G } from "node_modules/@upstash/redis/zmscore-CjoCv9kz.mjs";
 
 // Create a new ratelimiter, that allows 10 requests per 10 seconds
 const ratelimit = new Ratelimit({
@@ -12,6 +14,29 @@ const ratelimit = new Ratelimit({
   limiter: Ratelimit.slidingWindow(10, "10 s"),
   analytics: true,
 });
+
+const UserDataPosts = async (posts: Post[]) => {
+  const userclient = await clerkClient();
+  const users = (await userclient.users.getUserList({
+    userId: posts.map((post) => post.authorId),
+    limit: 100
+  })).data.map(filterUserForClient);
+
+  console.log(users);
+  return posts.map((post) => {
+    const author = users.find((user) => user.id === post.authorId);
+
+    if (!author?.username) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Author for post not found"});
+    
+    return {
+      post,
+      author: {
+        ...author,
+        username: author.username
+      }
+    }
+  });
+}
 
 export const postRouter = createTRPCRouter({
     getAll: publicProcedure
@@ -23,26 +48,30 @@ export const postRouter = createTRPCRouter({
           }]
         });
 
-        const userclient = await clerkClient();
-        const users = (await userclient.users.getUserList({
-          userId: posts.map((post) => post.authorId),
-          limit: 100
-        })).data.map(filterUserForClient);
-
-        console.log(users);
-        return posts.map((post) => {
-          const author = users.find((user) => user.id === post.authorId);
-
-          if (!author?.username) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Author for post not found"});
-          
-          return {
-            post,
-            author: {
-              ...author,
-              username: author.username
-            }
-          }
+        return UserDataPosts(posts);
+      }),
+    
+    getPostsByUser: publicProcedure.input(z.object({userId: z.string()}))
+      .query(async ({ctx, input}) => {
+        return ctx.db.post.findMany({
+          where: {
+            authorId: input.userId
+          },
+          take: 100,
+          orderBy: [{ createdAt: "desc"}]
+        }).then(UserDataPosts);
+      }),
+    
+    getPostById: publicProcedure
+      .input(z.object({ id: z.string()}))
+      .query(async ({ctx, input}) => {
+        const post = await ctx.db.post.findUnique({
+          where: {id: input.id}
         });
+
+        if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+
+        return (await UserDataPosts([post]))[0];
       }),
 
     create: privateProcedure
